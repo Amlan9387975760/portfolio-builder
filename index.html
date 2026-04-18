@@ -252,13 +252,17 @@
     <div class="section-sub">Your portfolio will be live at github.io in seconds.</div>
 
     <div class="info-box">
-      <h4>How to get a GitHub Token</h4>
+      <h4>How to get a GitHub Token (must be Classic)</h4>
       <ol>
-        <li>Go to <strong>GitHub → Settings → Developer settings → Personal access tokens</strong></li>
+        <li>Go to <strong>github.com → your profile photo → Settings</strong></li>
+        <li>Scroll to bottom → <strong>Developer settings</strong></li>
+        <li>Click <strong>Personal access tokens → Tokens (classic)</strong></li>
         <li>Click <strong>"Generate new token (classic)"</strong></li>
-        <li>Check: <code>repo</code>, <code>workflow</code></li>
-        <li>Copy and paste below</li>
+        <li>Set expiration to <strong>90 days</strong></li>
+        <li>Check these scopes: <code>repo</code> ✓ &nbsp; <code>workflow</code> ✓</li>
+        <li>Click <strong>Generate token</strong> → Copy it immediately</li>
       </ol>
+      <p style="color:#f87171;margin-top:10px;font-size:0.75rem">⚠️ Use <strong>classic token</strong> only — fine-grained tokens will not work here.</p>
     </div>
 
     <div class="card">
@@ -622,7 +626,7 @@ async function handleDeploy() {
   try {
     btn.innerHTML = '<span class="spin">⟳</span> Getting GitHub username...';
     const userRes = await fetch('https://api.github.com/user', { headers: { Authorization: 'token ' + token } });
-    if (!userRes.ok) throw new Error('Invalid GitHub token. Please check and try again.');
+    if (!userRes.ok) throw new Error('Token is invalid or expired. Please generate a new Classic token with "repo" and "workflow" scopes checked.');
     const user = await userRes.json();
     const username = user.login;
 
@@ -638,7 +642,13 @@ async function handleDeploy() {
     });
     if (!createRes.ok) {
       const err = await createRes.json();
-      if (!err.message.includes('already exists')) throw new Error(err.message);
+      if (err.message && err.message.includes('already exists')) {
+        // repo exists, that's fine — continue
+      } else if (createRes.status === 404) {
+        throw new Error('Token missing "repo" permission. Generate a Classic token with "repo" scope checked.');
+      } else {
+        throw new Error(err.message || 'Failed to create repository.');
+      }
     }
 
     await sleep(2000); // wait for repo init
