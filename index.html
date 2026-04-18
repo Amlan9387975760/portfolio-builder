@@ -642,10 +642,11 @@ async function handleDeploy() {
     });
     if (!createRes.ok) {
       const err = await createRes.json();
-      if (err.message && err.message.includes('already exists')) {
-        // repo exists, that's fine — continue
+      const nameExists = (err.errors || []).some(e => e.message && e.message.includes('already exists'));
+      if (nameExists) {
+        // repo already exists — fine, just push to it
       } else if (createRes.status === 404) {
-        throw new Error('Token missing "repo" permission. Generate a Classic token with "repo" scope checked.');
+        throw new Error('Token missing "repo" permission. Use a Classic token with "repo" scope.');
       } else {
         throw new Error(err.message || 'Failed to create repository.');
       }
