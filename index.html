@@ -220,19 +220,26 @@
 
   <!-- PANEL 2: REVIEW -->
   <div class="panel" id="panel-review">
-    <div class="section-heading">Review Extracted Data</div>
-    <div class="section-sub">Check what was found in your resume before deploying.</div>
+    <div class="section-heading">Review & Edit Extracted Data</div>
+    <div class="section-sub">Correct anything that looks wrong before deploying.</div>
 
     <div class="stat-row" id="stat-row"></div>
 
     <div class="card">
-      <div class="card-title">Personal Info</div>
-      <div class="info-grid" id="info-grid"></div>
+      <div class="card-title">Personal Info — Edit if needed</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px" id="edit-grid">
+        <div><label class="field-label" style="font-size:0.75rem">Full Name</label><input type="text" id="edit-name" /></div>
+        <div><label class="field-label" style="font-size:0.75rem">Job Title</label><input type="text" id="edit-title" /></div>
+        <div><label class="field-label" style="font-size:0.75rem">Location</label><input type="text" id="edit-location" /></div>
+        <div><label class="field-label" style="font-size:0.75rem">Email</label><input type="text" id="edit-email" /></div>
+        <div><label class="field-label" style="font-size:0.75rem">Phone</label><input type="text" id="edit-phone" /></div>
+        <div><label class="field-label" style="font-size:0.75rem">LinkedIn</label><input type="text" id="edit-linkedin" /></div>
+      </div>
     </div>
 
-    <div class="card" id="summary-card" style="display:none">
+    <div class="card">
       <div class="card-title">Summary</div>
-      <p id="summary-text" style="font-size:0.85rem;color:var(--muted);line-height:1.7"></p>
+      <textarea id="edit-summary" style="width:100%;background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:10px;color:var(--text);font-size:0.84rem;line-height:1.6;resize:vertical;min-height:80px;outline:none"></textarea>
     </div>
 
     <div class="card" id="skills-card" style="display:none">
@@ -242,7 +249,7 @@
 
     <div class="btn-row">
       <button class="btn btn-ghost" onclick="goStep(1)">← Re-upload</button>
-      <button class="btn btn-primary" onclick="goStep(3)">Looks Good → Deploy</button>
+      <button class="btn btn-primary" onclick="applyEditsAndDeploy()">Looks Good → Deploy</button>
     </div>
   </div>
 
@@ -386,13 +393,23 @@ function setPhotoFile(file) {
 async function extractFromPDF(buffer) {
   pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
   const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
-  let text = '';
-  for (let i = 1; i <= pdf.numPages; i++) {
-    const page = await pdf.getPage(i);
+  let fullText = '';
+  for (let p = 1; p <= pdf.numPages; p++) {
+    const page = await pdf.getPage(p);
     const content = await page.getTextContent();
-    text += content.items.map(item => item.str).join(' ') + '\n';
+    // Group text items by Y position to preserve line structure
+    const byY = {};
+    for (const item of content.items) {
+      if (!item.str.trim()) continue;
+      const y = Math.round(item.transform[5]);
+      byY[y] = byY[y] ? byY[y] + ' ' + item.str : item.str;
+    }
+    // Sort Y descending (top of page = highest Y in PDF coords)
+    const ys = Object.keys(byY).map(Number).sort((a, b) => b - a);
+    for (const y of ys) fullText += byY[y] + '\n';
+    fullText += '\n';
   }
-  return text;
+  return fullText;
 }
 
 async function extractFromDOCX(buffer) {
@@ -446,12 +463,35 @@ function parseContact(headerLines, allText) {
   const phone = (allText.match(PHONE_RE) || [])[0] || '';
   const linkedin = (allText.match(LINKEDIN_RE) || [])[0] || '';
   const github = (allText.match(GITHUB_RE) || [])[0] || '';
-  const nameLine = headerLines.find(l => l.trim().length > 2 && !EMAIL_RE.test(l) && !PHONE_RE.test(l) && !/https?:\/\//.test(l));
+
+  // Name: first short line (< 50 chars) that is not a bullet, URL, email, phone, or all-caps section header
+  const nameLine = headerLines.find(l => {
+    const t = l.trim();
+    return t.length >= 2 && t.length <= 50
+      && !EMAIL_RE.test(t) && !PHONE_RE.test(t)
+      && !/^https?:\/\//.test(t) && !/^[-•◦*]/.test(t)
+      && !/^(education|experience|skills|summary|profile|objective|work|projects?|awards?|achievements?|contact)/i.test(t)
+      && (t.split(' ').length <= 6); // max 6 words = likely a name
+  });
   const name = nameLine ? nameLine.trim() : '';
-  const titleLine = headerLines.find(l => l !== nameLine && l.trim().length > 3 && !EMAIL_RE.test(l) && !PHONE_RE.test(l) && !/^\+?\d/.test(l.trim()));
+
+  // Title: second short line after name, not contact info, max 80 chars
+  const titleLine = headerLines.find(l => {
+    const t = l.trim();
+    return t !== nameLine && t.length >= 3 && t.length <= 80
+      && !EMAIL_RE.test(t) && !PHONE_RE.test(t)
+      && !/^https?:\/\//.test(t) && !/^[-•◦*]/.test(t)
+      && !/^(education|experience|skills|summary|profile|objective)/i.test(t);
+  });
   const title = titleLine ? titleLine.trim() : '';
-  const locationLine = headerLines.find(l => /,/.test(l) && !EMAIL_RE.test(l) && !PHONE_RE.test(l));
+
+  // Location: short line with a comma (City, Country)
+  const locationLine = headerLines.find(l => {
+    const t = l.trim();
+    return /,/.test(t) && t.length < 60 && !EMAIL_RE.test(t) && !PHONE_RE.test(t);
+  });
   const location = locationLine ? locationLine.trim() : '';
+
   return { name, title, location, email, phone, linkedin, github };
 }
 
@@ -529,6 +569,8 @@ function parseAchievements(lines) {
   return lines.filter(l => l.length > 5).map(l => ({ title: l.replace(/^[-•]\s*/,'').trim(), description: '', year: (l.match(/\d{4}/) || [])[0] || '' }));
 }
 
+function trunc(str, max) { return str && str.length > max ? str.slice(0, max) + '...' : (str || ''); }
+
 function parseResume(text, fileName) {
   const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
   const sections = splitSections(lines);
@@ -538,14 +580,18 @@ function parseResume(text, fileName) {
   const skills = parseSkills(sections.skills || [], text);
   const projects = parseProjects(sections.projects || []);
   const achievements = parseAchievements(sections.achievements || []);
-  const summary = (sections.summary || []).join(' ').trim();
+  // Only use explicit summary section — never fall back to full text
+  const summaryLines = (sections.summary || []).filter(l => l.length > 10 && l.length < 300);
+  const summary = summaryLines.slice(0, 3).join(' ').trim();
   const yearsMatch = text.match(/(\d+)\+?\s*(?:years?|yrs?)\s*(?:of\s*)?(?:experience|exp)/i);
-  const yearsOfExperience = yearsMatch ? yearsMatch[1] + '+' : String(experience.length);
+  const yearsOfExperience = yearsMatch ? yearsMatch[1] + '+' : (experience.length > 0 ? String(experience.length) : '');
   const allDegrees = education.map(e => e.degree).join(' ');
   const highestDegree = /M\.?Tech|MBA|M\.?Sc|Master|Ph\.?D/i.test(allDegrees) ? (allDegrees.match(/M\.?Tech|MBA|M\.?Sc|Master|Ph\.?D/i)||['Graduate'])[0] : 'Graduate';
+  const rawName = contact.name || fileName.replace(/\.[^.]+$/,'').replace(/[-_]/g,' ');
+  const rawTitle = contact.title || (experience[0] && experience[0].title) || 'Professional';
   return {
-    name: contact.name || fileName.replace(/\.[^.]+$/,'').replace(/[-_]/g,' '),
-    title: contact.title || (experience[0] && experience[0].title) || 'Professional',
+    name: trunc(rawName, 60),
+    title: trunc(rawTitle, 80),
     location: contact.location || '', email: contact.email || '', phone: contact.phone || '',
     linkedin: contact.linkedin || '', github: contact.github || '', website: '',
     summary: summary || `${contact.name || 'Professional'} with ${yearsOfExperience} years of experience.`,
@@ -571,7 +617,6 @@ async function handleParse() {
 
 function renderReview() {
   const d = parsedData;
-  // Stats
   document.getElementById('stat-row').innerHTML = [
     ['Education', d.education.length],
     ['Experience', d.experience.length],
@@ -579,23 +624,31 @@ function renderReview() {
     ['Projects', d.projects.length],
   ].map(([l,v]) => `<div class="stat-box"><div class="num">${v}</div><div class="lbl">${l}</div></div>`).join('');
 
-  // Info grid
-  document.getElementById('info-grid').innerHTML = [
-    ['Name', d.name], ['Title', d.title], ['Location', d.location],
-    ['Email', d.email], ['Phone', d.phone], ['LinkedIn', d.linkedin],
-  ].filter(([,v]) => v).map(([l,v]) => `<div class="info-item"><div class="lbl">${l}</div><div class="val">${v}</div></div>`).join('');
+  // Fill editable fields
+  document.getElementById('edit-name').value = d.name || '';
+  document.getElementById('edit-title').value = d.title || '';
+  document.getElementById('edit-location').value = d.location || '';
+  document.getElementById('edit-email').value = d.email || '';
+  document.getElementById('edit-phone').value = d.phone || '';
+  document.getElementById('edit-linkedin').value = d.linkedin || '';
+  document.getElementById('edit-summary').value = d.summary || '';
 
-  // Summary
-  if (d.summary) {
-    document.getElementById('summary-card').style.display = '';
-    document.getElementById('summary-text').textContent = d.summary;
-  }
-
-  // Skills
   if (d.skills.length) {
     document.getElementById('skills-card').style.display = '';
     document.getElementById('skills-tags').innerHTML = d.skills.slice(0,16).map(s => `<span class="tag">${s.name} · ${s.percentage}%</span>`).join('') + (d.skills.length > 16 ? `<span class="tag">+${d.skills.length - 16} more</span>` : '');
   }
+}
+
+function applyEditsAndDeploy() {
+  // Apply any manual corrections before deploying
+  parsedData.name     = document.getElementById('edit-name').value.trim() || parsedData.name;
+  parsedData.title    = document.getElementById('edit-title').value.trim() || parsedData.title;
+  parsedData.location = document.getElementById('edit-location').value.trim();
+  parsedData.email    = document.getElementById('edit-email').value.trim();
+  parsedData.phone    = document.getElementById('edit-phone').value.trim();
+  parsedData.linkedin = document.getElementById('edit-linkedin').value.trim();
+  parsedData.summary  = document.getElementById('edit-summary').value.trim();
+  goStep(3);
 }
 
 // ─── Repo hint ─────────────────────────────────────────────────────────────────
