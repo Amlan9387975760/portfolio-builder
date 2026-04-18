@@ -975,10 +975,12 @@ function generatePortfolioHTML(data, photoExt) {
   --nav:rgba(7,11,18,.9);
 }
 [data-theme=light]{
-  --bg:#f0f6ff;--bg2:#e4effc;
-  --s:rgba(0,150,210,.06);--s2:rgba(0,150,210,.1);
-  --b:rgba(0,150,210,.15);--bh:rgba(0,150,210,.4);
-  --t:#0a1628;--m:#4a6080;--nav:rgba(240,246,255,.92);
+  --bg:#eef4ff;--bg2:#ddeaf8;
+  --s:rgba(0,140,200,.07);--s2:rgba(0,140,200,.12);
+  --b:rgba(0,140,200,.18);--bh:rgba(0,140,200,.45);
+  --t:#071428;--m:#3a5070;--dim:#6a8aaa;
+  --nav:rgba(238,244,255,.94);
+  --glow:rgba(0,180,220,.2);
 }
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html{scroll-behavior:smooth}
@@ -1171,7 +1173,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:300;height:62px;
   <div class="tabs">
     ${tabsDesktop}
   </div>
-  <div style="width:32px"></div>
+  <button class="thbtn" onclick="toggleTheme()" id="thbtn" title="Toggle theme"><i class="fas fa-sun"></i></button>
 </nav>
 
 <div class="mnav">
@@ -1310,6 +1312,11 @@ function go(id,btn){
   document.querySelectorAll('.tb,.mb').forEach(function(b){if(b.getAttribute('onclick')&&b.getAttribute('onclick').indexOf("'"+id+"'")>-1)b.classList.add('on');});
   document.getElementById('rp').scrollTop=0;
   if(id==='skills')setTimeout(function(){document.querySelectorAll('.skfill').forEach(function(el){el.style.width=el.dataset.w+'%';});},160);
+}
+function toggleTheme(){
+  var h=document.documentElement,b=document.getElementById('thbtn');
+  h.dataset.theme=h.dataset.theme==='dark'?'light':'dark';
+  b.innerHTML=h.dataset.theme==='dark'?'<i class="fas fa-sun"></i>':'<i class="fas fa-moon"></i>';
 }
 window.addEventListener('load',function(){setTimeout(function(){document.querySelectorAll('.skfill').forEach(function(el){el.style.width=el.dataset.w+'%';});},400);});
 <\/script>
