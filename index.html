@@ -563,41 +563,37 @@ function parseExperience(lines) {
   for (const line of lines) {
     const dm = line.match(DATE_RANGE_RE) || line.match(YEAR_RANGE_RE);
     const isBullet = /^[-•◦*▪–]\s/.test(line);
-    const hasBar = /\s*\|\s*/.test(line) && line.length < 100 && !dm;
+    const hasBar = /\s*\|\s*/.test(line) && line.length < 120 && !dm;
 
-    if (dm) {
-      // Date line: if current entry has no date yet, just fill it; else start new
+    if (hasBar) {
+      // "Company | Title" always starts a new entry
+      if (cur && cur.title) exps.push(cur);
+      const parts = line.split(/\s*\|\s*/);
+      cur = { title: parts[1] || parts[0], company: parts[0], duration: '', location: '', description: [], skills: [] };
+    } else if (dm) {
       const titlePart = line.replace(dm[0], '').replace(/\s*[|·,–]\s*/g, ' ').trim();
       if (cur && !cur.duration) {
+        // Assign date to current entry
         cur.duration = dm[0];
         if (titlePart.length > 2 && !cur.title) cur.title = titlePart;
       } else {
         if (cur && cur.title) exps.push(cur);
         cur = { title: titlePart, company: '', duration: dm[0], location: '', description: [], skills: [] };
       }
-    } else if (hasBar) {
-      // "Company | Title" or "Title | Company" on same line
-      const parts = line.split(/\s*\|\s*/);
-      if (cur && cur.title) exps.push(cur);
-      cur = { title: parts[1] || parts[0], company: parts[0], duration: '', location: '', description: [], skills: [] };
     } else if (isBullet) {
       if (!cur) cur = { title: '', company: '', duration: '', location: '', description: [], skills: [] };
       cur.description.push(line.replace(/^[-•◦*▪–]\s*/, '').trim());
-    } else if (line.length <= 80) {
-      // Short non-bullet: title or company
-      if (!cur) {
-        cur = { title: line, company: '', duration: '', location: '', description: [], skills: [] };
-      } else if (!cur.title) {
-        cur.title = line;
-      } else if (!cur.company && line !== cur.title) {
-        cur.company = line;
-      } else if (cur.title && cur.company) {
-        // Looks like a new entry starting
-        exps.push(cur);
-        cur = { title: line, company: '', duration: '', location: '', description: [], skills: [] };
-      }
-    } else if (line.length > 20 && cur) {
-      // Long line without bullet — paragraph description
+    } else if (cur && cur.duration) {
+      // Duration already set → everything else is description until next Company|Title
+      if (line.length > 2) cur.description.push(line);
+    } else if (!cur) {
+      cur = { title: line, company: '', duration: '', location: '', description: [], skills: [] };
+    } else if (!cur.title) {
+      cur.title = line;
+    } else if (!cur.company && line !== cur.title && line.length < 80) {
+      cur.company = line;
+    } else if (line.length > 2) {
+      // Pre-date description (paragraph before date line)
       cur.description.push(line);
     }
   }
